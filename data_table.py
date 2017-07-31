@@ -2,7 +2,7 @@ import pandas as pd
 from glob import glob
 from parsers import parse_for_pandas
 import matplotlib.pyplot as plt
-path = '/home/james/Dropbox/ML_sims/'
+path = '/home/james/Dropbox/ML_sims/f0_10hz/'
 
 first = True
 for path in sorted(glob(path+'*.dat'), key=lambda x: (int(x.split('/')[-1].split('_')[0]),
@@ -28,3 +28,4 @@ for mw in [2, 4, 6]:
             plt.xlabel(r'$\Delta\sigma$')
             fig = plot.get_figure()
             fig.savefig('plots/mw={0}_dist={1}_q={2}_sdVk0.eps'.format(mw, dist, q))
+            plt.close()
