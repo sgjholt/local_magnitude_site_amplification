@@ -53,3 +53,9 @@ def parse_for_pandas(path):
     return {'distance': data[:, 1], 'mw': data[:, 0], 'deltaML': data[:, 2],
             'k0': np.array([float(meta[1]) for _ in data]), 'sd': np.array([float(meta[0]) for _ in data]),
             'q': np.array([float(meta[2]) for _ in data])}
+
+
+def parse_ampl(path):
+    meta = path.split('/')[-1].split('.')[0].split('_')[-1]
+    data = np.loadtxt(path, skiprows=1)
+    return {'f0': meta, 'data': data}
