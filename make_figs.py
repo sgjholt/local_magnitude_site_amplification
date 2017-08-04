@@ -28,17 +28,17 @@ for i, path in enumerate(sorted(glob(path+'*.ampl'), key=lambda x: int(x.split('
     print(dd)
     ax.ravel()[i].loglog(dd['data'][:, 0], dd['data'][:, 1], 'r', linewidth=3)
     ax.ravel()[i].hlines(1, 1, 10, colors='k', linestyles='dashed', linewidth=2)
-    plt.ylim([0.8, 35])
+    plt.ylim([0.8, 10])
     ax.ravel()[i].set_xticks([1, 5, 10])
-    ax.ravel()[i].set_yticks([1, 10, 30])
-    ax.ravel()[i].set_title(r'$f_0: {}$'.format(dd['f0'].upper()))
+    ax.ravel()[i].set_yticks([1, 5, 10])
+    ax.ravel()[i].set_title(r'$f_0: {}$ $Hz$'.format(int(dd['f0'].split('h')[0])))
 
     if i in [4]:
         ax.ravel()[i].set_ylabel(r'$Amplification$')
     if i in [8, 9]:
         ax.ravel()[i].set_xlabel(r'$Frequency$ $[Hz]$')
     ax.ravel()[i].grid(which='both')
-    plt.ylim([0, 40])
+    plt.ylim([0.8, 10])
     ax.ravel()[i].yaxis.set_major_formatter(ticker.FuncFormatter(
         lambda y, pos: ('{{:.{:1d}f}}'.format(int(np.maximum(-np.log10(y), 0)))).format(y)))
     ax.ravel()[i].xaxis.set_major_formatter(ticker.FuncFormatter(
