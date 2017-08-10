@@ -1,4 +1,4 @@
-from libs.SiteMethods import ShTransferFunction
+from SiteMethods import ShTransferFunction
 
 mod = {'Vs': [100, 1500], 'Dn': [1600, 2600], 'Hl': [25, 0], 'Qs': [10, 100],
        'Freqs': np.logspace(np.log10(1), np.log10(10), 50).tolist()}
