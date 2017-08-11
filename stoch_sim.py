@@ -11,8 +11,17 @@ import scipy.signal as sg
 import matplotlib.pyplot as plt
 from SiteMethods import ShTransferFunction
 
+def expon_filter(t, T, ftm=2, eps=0.2, eta=0.05):
+    
+    b = -(eps*np.log(eta))/(1+eps*(np.log(eps)-1))
+    c = b/eps
+    a = (np.exp(1)/eps)**b
+    tn = ftm*T
+    
+    return (a*(t/tn)**b)*(np.exp(-c*(t/tn)))
+    
 
-def stoch_signal_spectrum(fs=200, secs=10, plot=False):
+def stoch_signal_spectrum(fs=200, secs=20, plot=False):
     """
 
     :param fs:
@@ -20,9 +29,10 @@ def stoch_signal_spectrum(fs=200, secs=10, plot=False):
     :return:
     """
     # rfft used as real signal - only real freqs used
-    t_sig = np.random.randn(fs*secs)
+    t = np.linspace(0, secs, fs*secs)
+    t_sig = np.random.randn(fs*secs)*expon_filter(t, 10)
     t_sig_pad = np.pad(t_sig, 1000, 'constant')
-    sig = np.abs(np.fft.rfft(t_sig_pad*sg.hann(len(t_sig_pad))))  # abs(fft) of windowed rand signal (normal, sig=1)
+    sig = np.abs(np.fft.rfft(t_sig_pad))  # abs(fft) of windowed rand signal (normal, sig=1)
     sig /= np.sqrt(np.mean(sig**2))  # normalised such that RMS = 1
     freq = np.fft.rfftfreq(len(t_sig_pad), d=1/fs)  # frequencies of fft
 
