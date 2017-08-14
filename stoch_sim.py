@@ -159,19 +159,21 @@ f = np.linspace(0.1, 25, 1000)
 # f = np.linspace(0, 25, 100)
 plot = False
 #plt.ion()
-for Mw in [2, 4, 6]:
-    for SD in [10, 100]:
-        for R in [2, 20, 200]:
-            R = check_distance(R, Mw)
-            for Q in [1200]:
-                for ko in [0.005, 0.04]:
-                    for fo in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
+for fo in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
+    site_amp = site_amp(fo, f)
+    for Mw in [2, 4, 6]:
+        for SD in [10, 100]:
+            for R in [2, 20, 200]:
+                R = check_distance(R, Mw)
+                for Q in [1200]:
+                    for ko in [0.005, 0.04]:
+
                         #for _ in range(10):
                         freq, stoch_sig = stoch_signal_spectrum()
                         stoch_sig = np.interp(f, freq, stoch_sig)
 
                         eq_spec_surf = ((stoch_sig*brune_source(Mw, SD, f)/whole_atten(
-                            R+0.025, Q, f, ko))*site_amp(fo, f))/(2*np.pi*f)**2  # displacement
+                            R+0.025, Q, f, ko))*site_amp)/(2*np.pi*f)**2  # displacement
                         eq_spec_surf *= wood_and_filt(f)  # * (2*np.pi*f)**2
 
                         eq_spec_bh = (stoch_sig*brune_source(Mw, SD, f)/path_atten(R, Q, f))/(2*np.pi*f)**2
