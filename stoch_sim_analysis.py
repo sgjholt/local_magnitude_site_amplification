@@ -16,11 +16,11 @@ titles = ['dMl', 'Mw', 'SD', 'R', 'Q', 'ko', 'fo']
 df = pd.read_csv('test.out', names=titles)
 
 
-for fo in [1, 3, 10]:
-    for ko in [0.005, 0.01, 0.04]:
-        for SD in [10, 100, 200]:
+for fo in [1, 10]:
+    for ko in [0.005, 0.04]:
+        for SD in [10, 100]:
             #for dist in [2, 20, 200]:
-            for Q in [600, 1200, 2400]:
+            for Q in [1200]:
                 plot = df.query('SD=={0} & Q =={1} & fo=={2} & ko=={3}'.format(SD, Q, fo, ko)).plot(
                     x='Mw', y='dMl', c='R', kind='scatter', title=
                     'Simulated ML amplification: ' + r'$SD={0}$, $Q={1}$, $f_0={2}$, $\kappa^0={3}$ '.format(SD, Q, fo, ko), cmap=cmap)
