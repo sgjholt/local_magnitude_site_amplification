@@ -6,9 +6,10 @@ Created on Mon Aug 14 15:43:08 2017
 @author: james
 """
 
+import matplotlib.pyplot as plt
 import pandas as pd
-import numpy as np
 from matplotlib import cm
+
 cmap = cm.get_cmap('jet')
 
 titles = ['dMl', 'Mw', 'SD', 'R', 'Q', 'ko', 'fo']

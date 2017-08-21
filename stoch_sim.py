@@ -6,12 +6,16 @@ Created on Tue Aug  8 14:46:32 2017
 @author: james
 """
 import time
-import numpy as np
-import scipy.signal as sg
+
+# import scipy.signal as sg
 import matplotlib.pyplot as plt
+import numpy as np
+
 from SiteMethods import ShTransferFunction, QwlApproxSolver, QwlImpedance
 
+
 def expon_filter(t, T, ftm=2, eps=0.2, eta=0.05, plot=False):
+
     """
 
     :param t:
@@ -38,64 +42,83 @@ def expon_filter(t, T, ftm=2, eps=0.2, eta=0.05, plot=False):
         return (a*(t/tn)**b)*(np.exp(-c*(t/tn)))
     
 
-def stoch_signal_spectrum(fs=500, secs=40, plot=False):
-    """
-    
-    :param fs:
-    :param plot:
-    :return: Displacement 
-    """
-    # rfft used as real signal - only real freqs used
-    t = np.linspace(0, secs, int(fs*secs)) # define arbitrary time vector
-    t_sig = np.random.randn(int(fs*secs))*expon_filter(t, secs)
-    t_sig_pad = np.pad(t_sig, int(fs*(secs/2)), 'constant') # pad the signal with zeros
-    sig = np.fft.rfft(t_sig_pad)[1:]# abs(fft) of windowed rand signal (normal, sig=1)
-    freq = np.fft.rfftfreq(len(t_sig_pad), d=1/fs)[1:] # the first value is 0 so ignore it (otherwise problems)
-    sig /= (np.complex(1j)*2*np.pi*freq)**2 # integration in time domain (acc->disp = integrate twice)
-    sig /= np.sqrt(np.mean(sig**2)) # normalise the signal such that the RMS=1
-    
-    if plot:
-        fig, ax = plt.subplots(2, 1)
-        ax.ravel()[0].plot(np.arange(0, secs, 1/fs), t_sig, 'r')
-        ax.ravel()[0].set_title('time signal')
-        ax.ravel()[0].set_xlabel('time [s]')
-        ax.ravel()[0].set_ylabel('amplitude')
-        ax.ravel()[1].loglog(freq, np.abs(sig), 'r')
-        ax.ravel()[1].set_title('frequency signal')
-        ax.ravel()[1].set_xlabel('frequency [Hz]')
-        ax.ravel()[1].set_ylabel('normalised amplitude')
-        fig.tight_layout()
-    else:
-        return freq, sig
+#def stoch_signal_spectrum(fs=500, secs=40, plot=False):
+#    """
+#    
+#    :param fs:
+#    :param plot:
+#    :return: Displacement 
+#    """
+#    # rfft used as real signal - only real freqs used
+#    t = np.linspace(0, secs, int(fs*secs)) # define arbitrary time vector
+#    t_sig = np.random.randn(int(fs*secs))*expon_filter(t, secs)
+#    t_sig_pad = np.pad(t_sig, int(fs*(secs/2)), 'constant') # pad the signal with zeros
+#    sig = np.fft.rfft(t_sig_pad)[1:]# abs(fft) of windowed rand signal (normal, sig=1)
+#    freq = np.fft.rfftfreq(len(t_sig_pad), d=1/fs)[1:] # the first value is 0 so ignore it (otherwise problems)
+#    sig /= (np.complex(1j)*2*np.pi*freq)**2 # integration in time domain (acc->disp = integrate twice)
+#    sig /= np.sqrt(np.mean(sig**2)) # normalise the signal such that the RMS=1
+#    
+#    if plot:
+#        fig, ax = plt.subplots(2, 1)
+#        ax.ravel()[0].plot(np.arange(0, secs, 1/fs), t_sig, 'r')
+#        ax.ravel()[0].set_title('time signal')
+#        ax.ravel()[0].set_xlabel('time [s]')
+#        ax.ravel()[0].set_ylabel('amplitude')
+#        ax.ravel()[1].loglog(freq, np.abs(sig), 'r')
+#        ax.ravel()[1].set_title('frequency signal')
+#        ax.ravel()[1].set_xlabel('frequency [Hz]')
+#        ax.ravel()[1].set_ylabel('normalised amplitude')
+#        fig.tight_layout()
+#    else:
+#        return freq, sig
     
 
-def next_pow_2(x):
-    if x == x**np.log2(x):
-        return x
-    else:
-        return int(2**np.ceil(np.log2(x)))
+def diff_next_pow_2(x):
     
-def many_stoch_signals(num=100, fs=1000, secs=100, f_cap=1000):
-    # TODO: This is broken, you need to sort out the pad widths - for some reason it is different when only selecting one trace...
+    diff = 2**np.ceil(np.log2(x)) - x
+    # this ensures signal has decent padding & still pow of 2
+    if diff < 200: 
+        # take upper value of
+        diff = 2**np.ceil(np.log2(x+200)) - x
+        
+    # check result is pow of 2
+    check = ((x+diff) % (np.log2(x+diff)))
+    
+    if (check == np.ceil(check)):
+        print('x+diff is a pow of 2 - diff may be used')
+    
+    if diff % 2 == 0:
+        return int(diff/2), int(diff/2)
+    else:
+        return int(np.ceil(diff/2)), int(np.ceil(diff/2)-1)
+    
+def many_stoch_signals(num=100, fs=1000, secs=100, f_cap=1E5):
     """
-
-    :param fs:
-    :param plot:
-    :return: Displacement 
+    
+    :param num: int: number of signals to be generated.
+    :param fs: int: sampling frequency [Hz].
+    :param secs: int/float: total time (whole duration, source + path)
+    :param f_cap: int/float: highest frequency to be considered for simulation.
+        Note: not recommended to change this, but kept here for debugging.
+    :return: matrix of RMS normalised acceleration spectra for 
+        random (Gaussian, zero mean, unit variance) signals.
     """
      
     # rfft used as real signal - only real freqs used
     t = np.linspace(0, secs, int(fs*secs)) # define arbitrary time vector
     t_sig = np.random.randn(num,int(fs*secs))*expon_filter(t, secs/2)
-    np2 = next_pow_2(len(t_sig)+100)
+    # work out the difference to np2 and pad to that length with zeroes to make fft/ifft more efficient
+    np2_1, np2_2 = diff_next_pow_2(len(t_sig[0])) 
     
-    print(len(t_sig), np2)
-    #if np2 != len(t_sig):
-    t_sig_pad = np.pad(t_sig, [(0, 0), (int(np2/2), int(np2/2))],'constant') # pad the signal with zeros
-    #else:
-    #    t_sig_pad = np.pad(t_sig, [(0, 0), (int((fs*len(t_sig))/8), int((fs*len(t_sig))/8))],'constant')
+    # print(len(t_sig[0]), int(np2_1 + np2_2))
+    # pad the signal with zeros to the nearest power of 2 to len(signal)+200
+    # added a water level of 200 zeros to guarantee there will be ...
+    # ... extra padding in the event len(signal) is pow of 2. 
+    t_sig_pad = np.pad(t_sig, [(0, 0), (int(np2_1), int(np2_2))],'constant') 
+    # this is for consistent padding - doesn't guarantee pow of 2 length
+    # t_sig_pad = np.pad(t_sig, [(0, 0), (int((fs*len(t_sig))/8), int((fs*len(t_sig))/8))],'constant')
         
-    print(len(t_sig_pad))
+    print(len(t_sig_pad[0]))
     sig = np.fft.rfft(t_sig_pad)[:,1:]# abs(fft) of windowed rand signal (normal, sig=1)
     freq = np.fft.rfftfreq(len(t_sig_pad[0]), d=1/fs)[1:] # the first value is 0 so ignore it (otherwise problems)
     #sig /= np.sqrt(np.mean(np.abs(sig)**2))
@@ -110,11 +133,11 @@ def many_stoch_signals(num=100, fs=1000, secs=100, f_cap=1000):
 def brune_source(Mw, SD, f, plot=False):
     """
 
-    :param Mw:
-    :param SD:
-    :param f:
-    :param plot:
-    :return: displacement (cm)
+    :param Mw: int/float: Moment Magnitude .
+    :param SD: int/float: Stress Drop (Bars NOT Pa).
+    :param f: frequencies to be simulated [Hz].
+    :param plot: bool: Plotting on or off.
+    :return: Brune (1970, 1971) (omega**2) source acceleration spectrum [cm/s].
     """
     # as defined in Boore (2003) Pure and Applied Geophysics
     # https://link.springer.com/article/10.1007/PL00012553
@@ -124,15 +147,20 @@ def brune_source(Mw, SD, f, plot=False):
     fo = 4.9E6*3.5*(SD/Mo)**(1/3)
     # print('Corner Freq:'+str(fo))
 
+    spectrum = (C*Mo / (1 + (f/fo)**2)) * (2*np.pi*f)**2
+
     if plot:
-        plt.loglog(f, (C*Mo / (1 + (f/fo)**2)), 'r')
-        #plt.plot(fo, (C*Mo / (1 + (f/fo)**2)), 'ok')
+        plt.loglog(f, spectrum, 'r')
+        xy =(fo, np.exp(np.mean((np.log(((C*Mo / 2) * (2*np.pi*fo)**2)), np.log(spectrum[-1])))))
+        plt.plot(xy[0], xy[1], 'ok')
+        
+        plt.annotate(r'$f_0$', xy=xy, xytext=(5, 0), textcoords='offset points')
         plt.title(r'Brune Source Acceleration Spectra: $M_w={0}$, $\Delta\sigma={1}$, $f_0={2}$'.format(Mw, SD, np.round(fo, 2)))
-        plt.ylabel(r'$Amplitude$ $[cm/s]$')
+        plt.ylabel(r'$Acceleration$ $[cm/s]$')
         plt.xlabel(r'$Frequency$ $[Hz]$')
         plt.grid(which='both')
     else:
-        return (C*Mo / (1 + (f/fo)**2)) * (2*np.pi*f)**2
+        return spectrum
     
 
 def whole_atten(R, Q, f, ko, plot=False):
@@ -325,7 +353,7 @@ if __name__ == '__main__':
     
     # preamble - parameter selection
     plot = False 
-    save = False
+    save = True
     
     fs = 1000
     #Dur = 100
@@ -346,25 +374,25 @@ if __name__ == '__main__':
         #issue_bin = []
     #first=True
     #plt.ion()
-    for fo in [1, 10]:
-        for Mw in [2, 3, 4, 5, 6]:
+    for fo in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
+        for Mw in [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5.5, 6, 6.5, 7]:
             #dist_check = [] # ***uncomment this if you want to use fault parrallel observation points/comment for fault normal
-            for R in [10, 160, 320]:
+            for R in [1, 10, 40, 160, 320]:
                 #R, changed = check_distance(R, Mw) #***
                     #if changed: #***
                     #    if R in dist_check: #***
                     #        R = dist_check[-1] + 10 #***
                     #    else:    #***
                     #        dist_check.append(R) #***
-                for SD in [10, 100]:
+                for SD in [10, 50, 100, 200]:
                     Dur = duration_calc(Mw, R, SD=SD)
                     f, _ = many_stoch_signals(num=1, fs=fs, secs=Dur)
                     wood_and = resp(f, kind=kind, n=unit)
                     site_a = QWL_amp(fo, f)
                     
                     #    print('observation point < radius of rupture - new observation point @ {} km'.format(R)) #***
-                    for Q in [1200]:
-                        for ko in [0.005, 0.04]:
+                    for Q in [600, 1200, 2400]:
+                        for ko in [0.005, 0.01, 0.02, 0.04]:
                             
                             #sim_bucket_surf = np.zeros((bucket_size, len(f)), dtype='complex')
                             #sim_bucket
@@ -375,7 +403,7 @@ if __name__ == '__main__':
                             sim_bucket_surf = (stoch_sig*brune_source(Mw, SD, f)/whole_atten(R, Q, f, ko)*site_a) / (2*np.pi*f*np.complex(1j))**2  # displacement
                                 #sim_bucket_surf[i] *= wood_and  # * (2*np.pi*f)**2
                                 
-                            sim_bucket_bh = (stoch_sig*brune_source(Mw, SD, f)/whole_atten(R, Q, f, ko)) / (2*np.pi*f*np.complex(1j))**2
+                            sim_bucket_bh = (stoch_sig*brune_source(Mw, SD, f)/whole_atten(R, Q, f, 0.00001)) / (2*np.pi*f*np.complex(1j))**2
                                 #sim_bucket_bh[i] *= wood_and  # * (2*np.pi*f)**2
                                 
                             sim_bucket_surf *= wood_and
