@@ -5,6 +5,7 @@ Created on Tue Aug  8 14:46:32 2017
 
 @author: james
 """
+import sys
 import time
 
 # import scipy.signal as sg
@@ -82,17 +83,17 @@ def diff_next_pow_2(x):
         diff = 2**np.ceil(np.log2(x+200)) - x
         
     # check result is pow of 2
-    check = ((x+diff) % (np.log2(x+diff)))
+    # check = ((x+diff) % (np.log2(x+diff)))
     
-    if (check == np.ceil(check)):
-        print('x+diff is a pow of 2 - diff may be used')
+    # if (check == np.ceil(check)):
+        # print('x+diff is a pow of 2 - diff may be used')
     
     if diff % 2 == 0:
         return int(diff/2), int(diff/2)
     else:
         return int(np.ceil(diff/2)), int(np.ceil(diff/2)-1)
     
-def many_stoch_signals(num=100, fs=1000, secs=100, f_cap=1E5):
+def many_stoch_signals(num=100, fs=1000, secs=100, min_spectral_res=0.5):
     """
     
     :param num: int: number of signals to be generated.
@@ -103,11 +104,18 @@ def many_stoch_signals(num=100, fs=1000, secs=100, f_cap=1E5):
     :return: matrix of RMS normalised acceleration spectra for 
         random (Gaussian, zero mean, unit variance) signals.
     """
-     
+    
     # rfft used as real signal - only real freqs used
-    t = np.linspace(0, secs, int(fs*secs)) # define arbitrary time vector
-    t_sig = np.random.randn(num,int(fs*secs))*expon_filter(t, secs/2)
+    t = np.linspace(0, np.ceil(secs*fs)/fs, int(np.ceil(fs*secs))) # define arbitrary time vector
+    t_sig = np.random.randn(num, len(t))*expon_filter(t, secs/2)
     # work out the difference to np2 and pad to that length with zeroes to make fft/ifft more efficient
+    if fs/len(t_sig[0]) > min_spectral_res:
+        # print(fs/len(t_sig[0]))
+        min_padding = (fs/min_spectral_res) - len(t_sig[0])
+        t_sig_pad = np.pad(t_sig, [(0, 0), (int(np.ceil(min_padding/2)), int(np.ceil(min_padding/2)))], mode='constant')
+        t_sig = t_sig_pad
+        del t_sig_pad
+    
     np2_1, np2_2 = diff_next_pow_2(len(t_sig[0])) 
     
     # print(len(t_sig[0]), int(np2_1 + np2_2))
@@ -118,16 +126,16 @@ def many_stoch_signals(num=100, fs=1000, secs=100, f_cap=1E5):
     # this is for consistent padding - doesn't guarantee pow of 2 length
     # t_sig_pad = np.pad(t_sig, [(0, 0), (int((fs*len(t_sig))/8), int((fs*len(t_sig))/8))],'constant')
         
-    print(len(t_sig_pad[0]))
+    # print(len(t_sig_pad[0]))
     sig = np.fft.rfft(t_sig_pad)[:,1:]# abs(fft) of windowed rand signal (normal, sig=1)
-    freq = np.fft.rfftfreq(len(t_sig_pad[0]), d=1/fs)[1:] # the first value is 0 so ignore it (otherwise problems)
+    freq = np.fft.rfftfreq(len(t_sig_pad[0]), d=1./fs)[1:] # the first value is 0 so ignore it (otherwise problems)
     #sig /= np.sqrt(np.mean(np.abs(sig)**2))
     sig /= np.sqrt(np.mean(np.abs(sig)**2, axis=1)[::,None]) 
     #sig /= (np.complex(1j)*2*np.pi*freq)**2 # integration in time domain (acc->disp = integrate twice)
-   
+    #print(len(t_sig_pad[0]), len(sig[0]))
     # normalise the signal such that the RMS=1
-    f_cap = np.argwhere(freq<=f_cap).ravel()
-    return freq[f_cap], sig[:,f_cap]
+    
+    return freq, sig
 
 
 def brune_source(Mw, SD, f, plot=False):
@@ -244,7 +252,7 @@ def duration_calc(Mw,  R, SD=100):
     
 def QWL_amp(f0, f, fs=1000, plot=False):
     
-    fre = np.logspace(np.log10(0.01), np.log10(fs/2), 200)
+    fre = np.logspace(np.log10(0.01), np.log10(fs/2), 1000)
     
     up_vs = {1: 100, 2: 200, 3: 300, 4: 400, 5: 500,
              6: 600, 7: 700, 8: 800, 9: 900, 10: 1000}
@@ -328,7 +336,7 @@ def resp(f, V=1, damp=1, T=0.8, n=0, kind='instrument', plot=False):
         plt.xlabel('Frequency [Hz]')
         plt.grid(which='both')
     else:
-        return resp / (2*np.pi*f*np.complex(1j))**n
+        return resp * (2*np.pi*f*np.complex(1j))**n
 
 
 def check_distance(r, mw):
@@ -349,115 +357,164 @@ def check_distance(r, mw):
     return np.round(r, 2), changed 
 
 
+def delta_ml(surface_acc_spec, borehole_acc_spec, wood_and_resp):
+    
+    # convert to displacement
+    surface_acc_spec /= (2*np.pi*f*np.complex(1j))**2 
+    borehole_acc_spec /= (2*np.pi*f*np.complex(1j))**2 
+    
+    # apply the WA response
+    surface_acc_spec *= wood_and_resp
+    borehole_acc_spec *= wood_and_resp
+    
+    # do inverse FFT and take the mean of delta ML = log10(surf_WA/bh_WA)
+    srf_wa = np.fft.irfft(surface_acc_spec) * len(surface_acc_spec[0])
+    bh_wa = np.fft.irfft(borehole_acc_spec) * len(borehole_acc_spec[0])
+    
+    return np.mean(np.log10(np.abs(srf_wa).max(axis=1) / np.abs(bh_wa).max(axis=1)))
+
+def peak_ground_motion(surface_acc_spec, borehole_acc_spec, unit=0):
+    
+    # convert to disp if unit=0, vel if unit=1, acc if unit=2
+    #if unit in [0, 1]:
+    surface_acc_spec /= (2*np.pi*f*np.complex(1j))**np.abs(unit-2) # integration so opposite rules apply
+    borehole_acc_spec /= (2*np.pi*f*np.complex(1j))**np.abs(unit-2)
+    # not convolved w/instrument/damped oscillator = true peak ground motion
+    srf_gm = np.fft.irfft(surface_acc_spec) * len(surface_acc_spec[0])
+    bh_gm = np.fft.irfft(borehole_acc_spec) * len(borehole_acc_spec[0])
+    
+    # print(len(srf_gm[0]))
+    
+    return 10**np.mean(np.log10(np.abs(srf_gm).max(axis=1))), 10**np.mean(np.log10(np.abs(bh_gm).max(axis=1)))
+    
+
+
 if __name__ == '__main__':
     
     # preamble - parameter selection
     plot = False 
-    save = True
-    
-    fs = 1000
-    #Dur = 100
-
-    kind = 'instrument'
-    unit=0 #0 = displacement cm, 1 = velocity cm/s, 2 = acceleration cm/s/s
-    
-    now = time.time()
-    # ----------script begin------------#
-    if unit == 0:
-        u = 'cm'
-    elif unit == 1:
-        u = 'cm/s'
-    else:
-        u = 'cm/s/s'
-    if save:
-        results = []
-        #issue_bin = []
-    #first=True
-    #plt.ion()
-    for fo in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
-        for Mw in [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5.5, 6, 6.5, 7]:
-            #dist_check = [] # ***uncomment this if you want to use fault parrallel observation points/comment for fault normal
-            for R in [1, 10, 40, 160, 320]:
-                #R, changed = check_distance(R, Mw) #***
-                    #if changed: #***
-                    #    if R in dist_check: #***
-                    #        R = dist_check[-1] + 10 #***
-                    #    else:    #***
-                    #        dist_check.append(R) #***
-                for SD in [10, 50, 100, 200]:
-                    Dur = duration_calc(Mw, R, SD=SD)
-                    f, _ = many_stoch_signals(num=1, fs=fs, secs=Dur)
-                    wood_and = resp(f, kind=kind, n=unit)
-                    site_a = QWL_amp(fo, f)
-                    
-                    #    print('observation point < radius of rupture - new observation point @ {} km'.format(R)) #***
-                    for Q in [600, 1200, 2400]:
-                        for ko in [0.005, 0.01, 0.02, 0.04]:
-                            
-                            #sim_bucket_surf = np.zeros((bucket_size, len(f)), dtype='complex')
-                            #sim_bucket
-                            #for i in range(bucket_size):
-                            _, stoch_sig = many_stoch_signals(num=100, fs=fs, secs=Dur)
-                            #stoch_sig = np.interp(f, freq, stoch_sig)
+    save = False
+    del_ml = False
+    gm = False
+    wa_v_gm = True
+    for fs in [600]:
         
-                            sim_bucket_surf = (stoch_sig*brune_source(Mw, SD, f)/whole_atten(R, Q, f, ko)*site_a) / (2*np.pi*f*np.complex(1j))**2  # displacement
-                                #sim_bucket_surf[i] *= wood_and  # * (2*np.pi*f)**2
-                                
-                            sim_bucket_bh = (stoch_sig*brune_source(Mw, SD, f)/whole_atten(R, Q, f, 0.00001)) / (2*np.pi*f*np.complex(1j))**2
-                                #sim_bucket_bh[i] *= wood_and  # * (2*np.pi*f)**2
-                                
-                            sim_bucket_surf *= wood_and
-                            sim_bucket_bh *= wood_and
+        #Dur = 100
+    
+        kind = 'instrument'
+        unit=int(sys.argv[1]) #0 = displacement cm, 1 = velocity cm/s, 2 = acceleration cm/s/s
         
-                            t_surf = np.fft.irfft(sim_bucket_surf) * len(sim_bucket_surf[0]) # normalised by 1/N remove norm by multiplying by the length
-                            #t_surf = t_surf[0:int(len(eq_spec_surf) / 2)]
-                            t_bh = np.fft.irfft(sim_bucket_bh) * len(sim_bucket_bh[0]) # normalised by 1/N remove norm by multiplying by the length
-                            #t_bh = t_bh[0:int(len(eq_spec_bh) / 2)]
-                            
-                            if save:
-                                #if first:
-                                #    first=False
-                                #    if np.round(np.mean(np.log10(t_surf.max(axis=1) / t_bh.max(axis=1))), 2) == np.nan:
-                                #        issue_bin.append(t_surf)
-                                #        issue_bin.append(t_bh)
-                                results.append(list((np.round(np.mean(np.log10(t_surf.max(axis=1) / t_bh.max(axis=1))), 2), Mw, SD, R, Q, ko, fo)))
-                            
-                            #if np.random.rand() < 0.25:
-                            if kind == 'instrument':
-                                print('Delta ML:{}, Mw:{}, SD:{}, R:{}, Q:{}, ko:{}, fo:{}'.format((np.round(np.mean(np.log10(np.abs(t_surf.max(axis=1)) / np.abs(t_bh.max(axis=1)))), 2)), Mw, SD, R, Q, ko, fo))
-                            if kind == 'ground': 
-                                print('Surf:{0} {1}, Bh:{2} {1}, Mw:{3}, SD:{4}, R:{5}, Q:{6}, ko:{7}, fo:{8}'.format(np.round(np.mean(np.abs(t_surf.max(axis=1))), 2), u, np.round(np.mean(np.abs(t_bh.max(axis=1))), 2), Mw, SD, R, Q, ko, fo))
-                                
-                            
-                            if plot:
-                                fig, ax = plt.subplots(2, 1)
-                                fig.suptitle('Simulated Wood Anderson Spectra: Surface and Borehole')
-                                
-                                
-                                #ax.ravel()[0].set_title(
-                                #    r'$M_w:{}$, $\Delta\sigma:{}$ $Bars$, $R_{{hyp}}:{}$ $km$, $Q:{}$, $\kappa^0:{}$, $f_0:{}$ $Hz$'.format(
-                                #        Mw, SD, R, Q, ko, fo))
-                                ax.ravel()[0].loglog(f, np.abs(sim_bucket_surf[0]), 'r')
-                                ax.ravel()[0].loglog(f, np.abs(sim_bucket_bh[0]), 'k')
-                                # plt.xlabel(r'$Frequency$ $[Hz]$')
-                                ax.ravel()[0].set_xlabel(r'$Period$ $[s]$')
-                                ax.ravel()[0].set_ylabel(r'$Displacement$ $Spectra$ $[cm s]$')
-                                # plt.legend(loc=2)
-                                ax.ravel()[0].grid(which='both')
-                            
+        now = time.time()
+        # ----------script begin------------#
+        
+        if unit == 0:
+            u = 'cm'
+        elif unit == 1:
+            u = 'cm/s'
+        else:
+            u = 'cm/s/s'
+        if save:
+            results = []
+            #issue_bin = []
+        #first=True
+        #plt.ion()
+        for fo in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
+            for Mw in [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5]:
+                #dist_check = [] # ***uncomment this if you want to use fault parrallel observation points/comment for fault normal
+                for R in [1, 5, 10, 80, 160, 320]:
+                    #R, changed = check_distance(R, Mw) #***
+                        #if changed: #***
+                        #    if R in dist_check: #***
+                        #        R = dist_check[-1] + 10 #***
+                        #    else:    #***
+                        #        dist_check.append(R) #***
+                    for SD in [10, 50, 100, 200]:
+                        Dur = duration_calc(Mw, R, SD=SD)
+                        f, _ = many_stoch_signals(num=1, fs=fs, secs=Dur)
+                        wood_and = resp(f, kind=kind, n=0)
+                        site_a = QWL_amp(fo, f, fs=fs)
                         
-                                #ax.ravel()[1].set_title('Delta ML:{}, Mw:{}, SD:{}, R:{}, Q:{}, ko:{}, fo:{}'.format(np.log10(t_surf.max() / t_bh.max()), Mw, SD, R, Q, ko, fo))
-                                ax.ravel()[1].plot(np.arange(0, len(t_surf[0]))/1000, t_surf[0], 'r')
-                                ax.ravel()[1].plot(np.arange(0, len(t_surf[0]))/1000, t_bh[0], 'k-')
-                                ax.ravel()[1].set_ylabel(r'$Displacement$ $cm$')
-                           
-                                plt.show()
-                                #_ = input('Press ENTER to continue.')
-                                #time.sleep(5)
-                                plt.close()
-    print('Finished:{} seconds elapsed'.format(np.round(time.time()-now, 2)))
-    if save:
-        np.savetxt('test.out', np.array(results), delimiter=',', fmt='%02.3f')
+                        #    print('observation point < radius of rupture - new observation point @ {} km'.format(R)) #***
+                        for Q in [2400, 1200, 600]:
+                            for ko in [0.005, 0.01, 0.02, 0.04]:
+                                
+                                #sim_bucket_surf = np.zeros((bucket_size, len(f)), dtype='complex')
+                                #sim_bucket
+                                #for i in range(bucket_size):
+                                _, stoch_sig = many_stoch_signals(num=100, fs=fs, secs=Dur)
+                                #stoch_sig = np.interp(f, freq, stoch_sig)
+            
+                                sim_bucket_surf = (stoch_sig*brune_source(Mw, SD, f)/whole_atten(R, Q, f, ko+0.001)*site_a) #/ (2*np.pi*f*np.complex(1j))**2  # displacement
+                                    #sim_bucket_surf[i] *= wood_and  # * (2*np.pi*f)**2
+                                    
+                                sim_bucket_bh = (stoch_sig*brune_source(Mw, SD, f)/whole_atten(R, Q, f, 0.001)) #/ (2*np.pi*f*np.complex(1j))**2
+                                    #sim_bucket_bh[i] *= wood_and  # * (2*np.pi*f)**2
+                                
+                                #sim_bucket_surf *= wood_and
+                                #sim_bucket_bh *= wood_and
+            
+                                #t_surf = np.fft.irfft(sim_bucket_surf) * len(sim_bucket_surf[0]) # normalised by 1/N remove norm by multiplying by the length
+                                #t_surf = t_surf[0:int(len(eq_spec_surf) / 2)]
+                                #t_bh = np.fft.irfft(sim_bucket_bh) * len(sim_bucket_bh[0]) # normalised by 1/N remove norm by multiplying by the length
+                                #t_bh = t_bh[0:int(len(eq_spec_bh) / 2)]
+                                
+                                
+                                    #if first:
+                                    #    first=False
+                                    #    if np.round(np.mean(np.log10(t_surf.max(axis=1) / t_bh.max(axis=1))), 2) == np.nan:
+                                    #        issue_bin.append(t_surf)
+                                    #        issue_bin.append(t_bh)
+                                if del_ml:
+                                    if wa_v_gm:
+                                        del_ml=False # no reason to do both
+                                        pass # move onto wa_v_gm
+                                    print('{0},{1},{2},{3},{4},{5},{6},{7}'.format(delta_ml(sim_bucket_surf, sim_bucket_bh, wood_and), Mw, SD, R, Q, ko, fo, fs))
+                                if gm:
+                                    srf, bh = peak_ground_motion(sim_bucket_surf, sim_bucket_bh, unit=unit)
+                                    print('{0},{1},{2},{3},{4},{5},{6}'.format(srf, bh, Mw, SD, R, Q, ko, fo))
+                                    
+                                if wa_v_gm:
+                                    srf, bh = peak_ground_motion(sim_bucket_surf.copy(), sim_bucket_bh.copy(), unit=unit)
+                                    print('{0},{1},{2},{3},{4},{5},{6},{7}'.format(delta_ml(sim_bucket_surf, sim_bucket_bh, wood_and),srf, bh, Mw, SD, R, Q, ko, fo))
+                                    
+                                    #for line in f:    
+                                    #    print(''.format(f, ))
+                                #if np.random.rand() < 0.25:
+    #                            if kind == 'instrument':
+    #                                print('Delta ML:{}, Mw:{}, SD:{}, R:{}, Q:{}, ko:{}, fo:{}'.format((np.round(np.mean(np.log10(np.abs(t_surf.max(axis=1)) / np.abs(t_bh.max(axis=1)))), 2)), Mw, SD, R, Q, ko, fo))
+    #                            if kind == 'ground': 
+    #                                print('Surf:{0} {1}, Bh:{2} {1}, Mw:{3}, SD:{4}, R:{5}, Q:{6}, ko:{7}, fo:{8}'.format(np.round(np.mean(np.abs(t_surf.max(axis=1))), 2), u, np.round(np.mean(np.abs(t_bh.max(axis=1))), 2), Mw, SD, R, Q, ko, fo))
+                                    
+                                
+    #                            if plot:
+    #                                fig, ax = plt.subplots(2, 1)
+    #                                fig.suptitle('Simulated Wood Anderson Spectra: Surface and Borehole')
+    #                                
+    #                                
+    #                                #ax.ravel()[0].set_title(
+    #                                #    r'$M_w:{}$, $\Delta\sigma:{}$ $Bars$, $R_{{hyp}}:{}$ $km$, $Q:{}$, $\kappa^0:{}$, $f_0:{}$ $Hz$'.format(
+    #                                #        Mw, SD, R, Q, ko, fo))
+    #                                ax.ravel()[0].loglog(f, np.abs(sim_bucket_surf[0]), 'r')
+    #                                ax.ravel()[0].loglog(f, np.abs(sim_bucket_bh[0]), 'k')
+    #                                # plt.xlabel(r'$Frequency$ $[Hz]$')
+    #                                ax.ravel()[0].set_xlabel(r'$Period$ $[s]$')
+    #                                ax.ravel()[0].set_ylabel(r'$Displacement$ $Spectra$ $[cm s]$')
+    #                                # plt.legend(loc=2)
+    #                                ax.ravel()[0].grid(which='both')
+    #                            
+    #                        
+    #                                #ax.ravel()[1].set_title('Delta ML:{}, Mw:{}, SD:{}, R:{}, Q:{}, ko:{}, fo:{}'.format(np.log10(t_surf.max() / t_bh.max()), Mw, SD, R, Q, ko, fo))
+    #                                ax.ravel()[1].plot(np.arange(0, len(t_surf[0]))/1000, t_surf[0], 'r')
+    #                                ax.ravel()[1].plot(np.arange(0, len(t_surf[0]))/1000, t_bh[0], 'k-')
+    #                                ax.ravel()[1].set_ylabel(r'$Displacement$ $cm$')
+    #                           
+    #                                plt.show()
+    #                                #_ = input('Press ENTER to continue.')
+    #                                #time.sleep(5)
+    #                                plt.close()
+        #print('Finished:{} seconds elapsed'.format(np.round(time.time()-now, 2)))
+        #if save:
+        #    np.savetxt('test.out', np.array(results), delimiter=',', fmt='%02.3f')
         
         
         
