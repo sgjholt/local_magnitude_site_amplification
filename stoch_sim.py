@@ -475,7 +475,7 @@ if __name__ == '__main__':
                                     
                                 if wa_v_gm:
                                     srf, bh = peak_ground_motion(sim_bucket_surf.copy(), sim_bucket_bh.copy(), unit=unit)
-                                    print('{0},{1},{2},{3},{4},{5},{6},{7}'.format(delta_ml(sim_bucket_surf, sim_bucket_bh, wood_and),srf, bh, Mw, SD, R, Q, ko, fo))
+                                    print('{0},{1},{2},{3},{4},{5},{6},{7},{8}'.format(delta_ml(sim_bucket_surf, sim_bucket_bh, wood_and),srf, bh, Mw, SD, R, Q, ko, fo))
                                     
                                     #for line in f:    
                                     #    print(''.format(f, ))
